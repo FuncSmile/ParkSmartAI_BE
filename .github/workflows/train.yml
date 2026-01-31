@@ -1,0 +1,22 @@
+name: Train Predictions Daily
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # setiap hari 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: curl -fsSL https://railway.app/install.sh | sh
+
+      - name: Run training script on Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway run --service ParkSmartAI_BE -- PYTHONPATH=. python app/scripts/train_predictions.py
