@@ -40,6 +40,11 @@ def get_db():
         yield session
 
 
+@app.get("/")
+def root():
+    return {"status": "ok", "service": settings.app_name}
+
+
 @app.on_event("startup")
 async def startup_event():
     Base.metadata.create_all(bind=engine)
