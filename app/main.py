@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .database import Base, engine, get_session
-from .models import SlotStatus, ParkingSlot, Prediction
+from .models import SlotStatus, ParkingSlot, Prediction, IoTDevice
 from . import crud
 from .schemas import (
     SlotUpdate,
@@ -21,6 +21,7 @@ from .schemas import (
 )
 from .websocket_manager import ConnectionManager
 from .ai import generate_predictions
+from .utils import generate_api_key
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version="0.1.0")
@@ -40,6 +41,20 @@ def get_db():
         yield session
 
 
+def verify_api_key(request: Request, db: Session = Depends(get_db)) -> IoTDevice:
+    api_key = request.headers.get("X-API-Key")
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API key")
+    device = crud.get_device_by_api_key(db, api_key=api_key)
+    if not device:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    if not device.is_active:
+        raise HTTPException(status_code=403, detail="Device disabled")
+    crud.touch_device_last_seen(db, device)
+    db.commit()
+    return device
+
+
 @app.get("/")
 def root():
     return {"status": "ok", "service": settings.app_name}
@@ -54,11 +69,20 @@ async def startup_event():
         if not session.query(ParkingSlot).first():
             seed_demo(session)
             session.commit()
+        # ensure devices exist for slots
+        existing_devices = session.query(IoTDevice).count()
+        if existing_devices == 0:
+            slots = session.query(ParkingSlot).all()
+            for slot in slots:
+                crud.create_device(session, slot_id=slot.slot_id, description=f"Device for {slot.slot_id}")
+            session.commit()
         generate_predictions(session, valid_minutes=settings.prediction_valid_minutes)
 
 
 @app.post("/api/iot/slot-update")
-async def update_slot(payload: SlotUpdate, db: Session = Depends(get_db)):
+async def update_slot(payload: SlotUpdate, device: IoTDevice = Depends(verify_api_key), db: Session = Depends(get_db)):
+    if device.slot_id and device.slot_id != payload.slot_id:
+        raise HTTPException(status_code=400, detail="slot_id does not match registered device")
     slot = crud.log_sensor_update(db, payload.slot_id, payload.status, payload.timestamp)
     db.commit()
     # refresh predictions for this slot context

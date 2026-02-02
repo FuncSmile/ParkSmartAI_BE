@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from enum import Enum
-from sqlalchemy import Column, String, Integer, DateTime, Float, ForeignKey
+from sqlalchemy import Column, String, Integer, DateTime, Float, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -50,3 +50,17 @@ class Prediction(Base):
     valid_until = Column(DateTime, default=lambda: datetime.utcnow() + timedelta(minutes=10))
 
     slot = relationship("ParkingSlot", back_populates="predictions")
+
+
+class IoTDevice(Base):
+    __tablename__ = "iot_devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slot_id = Column(String, ForeignKey("parking_slots.slot_id"), nullable=False)
+    api_key = Column(String, unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_seen = Column(DateTime, nullable=True)
+
+    slot = relationship("ParkingSlot")

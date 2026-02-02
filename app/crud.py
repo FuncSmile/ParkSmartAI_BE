@@ -5,7 +5,8 @@ from typing import List, Optional
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import Session
 
-from .models import ParkingSlot, SensorLog, Prediction, SlotStatus
+from .models import ParkingSlot, SensorLog, Prediction, SlotStatus, IoTDevice
+from .utils import generate_api_key
 
 
 def get_or_create_slot(
@@ -127,6 +128,49 @@ def choose_recommendation(session: Session) -> tuple[Optional[ParkingSlot], floa
 
     reason = "Highest probability & closest" if best_slot else "No slots"
     return best_slot, best_prob, reason
+
+
+# ---- IoT Devices ----
+def get_device_by_api_key(session: Session, api_key: str) -> Optional[IoTDevice]:
+    return session.query(IoTDevice).filter(IoTDevice.api_key == api_key).first()
+
+
+def create_device(
+    session: Session,
+    slot_id: str,
+    description: str | None = None,
+    api_key: str | None = None,
+) -> IoTDevice:
+    key = api_key or generate_api_key(slot_id)
+    device = IoTDevice(slot_id=slot_id, api_key=key, is_active=True, description=description)
+    session.add(device)
+    session.flush()
+    return device
+
+
+def list_devices(session: Session) -> list[IoTDevice]:
+    return list(session.query(IoTDevice).order_by(IoTDevice.id))
+
+
+def set_device_active(session: Session, device_id: int, active: bool) -> Optional[IoTDevice]:
+    device = session.get(IoTDevice, device_id)
+    if device:
+        device.is_active = active
+        session.flush()
+    return device
+
+
+def regenerate_api_key(session: Session, device_id: int) -> Optional[IoTDevice]:
+    device = session.get(IoTDevice, device_id)
+    if device:
+        device.api_key = generate_api_key(device.slot_id)
+        session.flush()
+    return device
+
+
+def touch_device_last_seen(session: Session, device: IoTDevice):
+    device.last_seen = datetime.utcnow()
+    session.flush()
 
 
 def clear_all(session: Session):
