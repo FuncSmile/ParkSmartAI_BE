@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List
-from pydantic import BaseModel, Field
+from typing import List, Union
+from pydantic import BaseModel, Field, field_validator
 
 
 class SlotUpdate(BaseModel):
     slot_id: str = Field(..., examples=["A-03"])
     status: int = Field(..., ge=0, le=1, examples=[1])
-    timestamp: datetime
+    timestamp: Union[datetime, int, float, None] = None
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def parse_ts(cls, v):
+        if v is None:
+            return datetime.utcnow()
+        if isinstance(v, (int, float)):
+            return datetime.utcfromtimestamp(v)
+        # string ISO atau datetime akan diparse otomatis oleh Pydantic
+        return v
 
 
 class ParkingSlotOut(BaseModel):

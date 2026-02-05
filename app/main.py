@@ -82,7 +82,10 @@ async def startup_event():
 @app.post("/api/iot/slot-update")
 async def update_slot(payload: SlotUpdate, device: IoTDevice = Depends(verify_api_key), db: Session = Depends(get_db)):
     if device.slot_id and device.slot_id != payload.slot_id:
-        raise HTTPException(status_code=400, detail="slot_id does not match registered device")
+        raise HTTPException(
+            status_code=400,
+            detail=f"slot_id mismatch: device={device.slot_id} body={payload.slot_id}",
+        )
     slot = crud.log_sensor_update(db, payload.slot_id, payload.status, payload.timestamp)
     db.commit()
     # refresh predictions for this slot context
